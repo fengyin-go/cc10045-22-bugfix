@@ -286,8 +286,40 @@ DDL_STATEMENTS = [
         row_count INTEGER DEFAULT 0,
         execution_time_ms INTEGER DEFAULT 0,
         status TEXT NOT NULL DEFAULT '正常',
-        executed_at TEXT NOT NULL DEFAULT (datetime('now'))
+        executed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        ended_at TEXT,
+        registered_at TEXT,
+        attribution_basis TEXT,
+        attribution_reason TEXT
     )""",
+
+    # 值班报告：签发时冻结统计口径和慢查询明细，后续补登/重算不得改写。
+    """CREATE TABLE IF NOT EXISTS duty_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        hours REAL NOT NULL,
+        generated_at TEXT NOT NULL,
+        generated_by TEXT NOT NULL DEFAULT '值班长',
+        summary_content TEXT NOT NULL,
+        slow_query_ids TEXT NOT NULL DEFAULT '[]',
+        query_log_ids TEXT NOT NULL DEFAULT '[]',
+        avg_scope TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT '已签发'
+    )""",
+
+    """CREATE TABLE IF NOT EXISTS duty_dispatches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id INTEGER NOT NULL,
+        query_log_id INTEGER NOT NULL,
+        assignee TEXT NOT NULL,
+        note TEXT,
+        status TEXT NOT NULL DEFAULT '已派单',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (report_id) REFERENCES duty_reports(id)
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_dd_report ON duty_dispatches(report_id)",
 
     """CREATE TABLE IF NOT EXISTS subscriptions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -373,6 +405,23 @@ class AnalyticsDB:
         conn.execute("PRAGMA busy_timeout=5000")
         for stmt in DDL_STATEMENTS:
             conn.execute(stmt)
+        # 轻量迁移：老库没有后续新增的列，补齐后旧记录仍可读取。
+        conn.row_factory = sqlite3.Row
+        existing = {
+            row["name"] for row in conn.execute("PRAGMA table_info(query_log)").fetchall()
+        }
+        for column, decl in (
+            ("started_at", "TEXT"),
+            ("ended_at", "TEXT"),
+            ("registered_at", "TEXT"),
+            ("attribution_basis", "TEXT"),
+            ("attribution_reason", "TEXT"),
+        ):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE query_log ADD COLUMN {column} {decl}")
+        # 索引在补齐列之后再建，兼容只有旧列的历史库。
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ql_ended ON query_log(ended_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ql_started ON query_log(started_at)")
         conn.commit()
         conn.close()
 

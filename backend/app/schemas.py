@@ -29,3 +29,36 @@ class EntryPayload(BaseModel):
 class ActionPayload(BaseModel):
     action: str
     remark: str | None = None
+
+
+class PeriodStatsPayload(BaseModel):
+    """时段统计请求：hours 必参与取数，时段可由起点/终点或锚点+基准日确定。"""
+
+    hours: float = 1
+    period_start: str | None = None
+    period_end: str | None = None
+    anchor: str = "09:00"
+    base_date: str | None = None
+
+
+class DutyReportPayload(PeriodStatsPayload):
+    generated_by: str = "值班长"
+
+
+class QueryLogPayload(BaseModel):
+    dataset: str
+    query_summary: str = ""
+    row_count: int = 0
+    execution_time_ms: int = 0
+    executor: str = "system"
+    started_at: str | None = None
+    ended_at: str | None = None
+    executed_at: str | None = None
+    registered_at: str | None = None
+
+
+class DispatchPayload(BaseModel):
+    query_log_id: int
+    assignee: str = "值班工程师"
+    note: str | None = None
+

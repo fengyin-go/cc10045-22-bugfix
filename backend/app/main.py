@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import db
 from app.pipeline import seed_real_data
-from app.routers import ROUTERS, PIPELINE_ROUTER
+from app.routers import ROUTERS, PIPELINE_ROUTER, QUERY_DUTY_ROUTER
 from app.store import store
 
 app = FastAPI(title="实时数据分析与可视化应用平台", version="1.0.0")
@@ -35,6 +35,11 @@ def startup_seed() -> None:
             print(f"[seed] 数据集初始化完成: {counts}")
         else:
             print(f"[seed] 数据集已存在，跳过初始化 (metrics={existing})")
+        # 查询历史时段场景单独兜底：老库没有查询日志时补一份可核对的样例。
+        if db.count("query_log") == 0:
+            from app.pipeline import seed_query_scenario
+            inserted = seed_query_scenario()
+            print(f"[seed] 查询历史时段场景初始化完成: {inserted}")
     except Exception as e:
         print(f"[seed] 初始化失败: {e}")
 
@@ -51,6 +56,9 @@ def overview() -> dict[str, object]:
 
 # 管道路由：数据分析核心入口
 app.include_router(PIPELINE_ROUTER)
+
+# 查询历史专用路由（时段统计/值班报告），必须先于通用 /api/{module} 注册
+app.include_router(QUERY_DUTY_ROUTER)
 
 # 资源路由含 /api/{module}，必须放在 health / overview 之后注册
 for module in ROUTERS:

@@ -12,8 +12,19 @@
         <button class="btn" data-testid="export" type="button" @click="exportRows">
           导出{{ meta.name }}清单
         </button>
+        <button
+          v-if="meta.key === 'query_history'"
+          class="btn"
+          data-testid="open-period-stats"
+          type="button"
+          @click="showPeriodPanel = !showPeriodPanel"
+        >
+          {{ showPeriodPanel ? '收起时段统计' : '从查询历史发起时段统计' }}
+        </button>
       </div>
     </header>
+
+    <QueryDutyPanel v-if="meta.key === 'query_history' && showPeriodPanel" />
 
     <div class="stat-row">
       <article v-for="item in stats" :key="item.label" class="stat-card">
@@ -104,11 +115,13 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import QueryDutyPanel from '@/views/QueryDutyPanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
+const showPeriodPanel = ref(true)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = meta.fields.slice(0, 3)

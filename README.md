@@ -79,5 +79,35 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 查询历史时段统计与值班报告
+
+查询历史页（`/query_history`）顶部可发起时段统计。时段默认从 09:00 起算，
+`hours` 会真实参与取数：
+
+- **归属口径**：查询按**结束时间**落入 `[时段起点, 时段终点)` 归属。
+  跨过时段起点的查询（开始早于起点、结束在时段内）按结束时间归入本时段，
+  归属依据记为 `ended_at_crossing_start` 并写明跨界事实。
+- **结论一致**：明细编号、慢查询数、平均耗时都取自同一批日志，
+  响应里的 `avg_scope` 会列出参与平均值的 `query_log_ids` 与求和公式，便于核对。
+- **老查询**：缺少开始时间时按可验证的结束时间（`executed_at`）归属，
+  保留原始时间并标注依据与原因，不臆造开始时间。
+- **值班报告**：点击「按此时段发值班报告」签发报告，签发时冻结统计结果、
+  慢查询编号与平均耗时范围。已签发报告只读，后补查询或重算不会改写它。
+- **派单**：报告详情按其中的慢查询编号派单；不在冻结明细中的编号会被拒绝。
+- **迟到登记**：签发后才登记的查询不会进入旧报告，报告详情会列出这些查询
+  并说明「为什么这份报告没有它」。
+
+相关接口：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET/POST | `/api/query_history/period-stats` | 按时段统计（`hours`/`anchor`/`base_date`） |
+| POST | `/api/query_history/period-stats/issue-report` | 按此时段签发值班报告 |
+| GET | `/api/query_history/period-stats/reports` | 值班报告列表 |
+| GET | `/api/query_history/period-stats/reports/{id}` | 报告详情（含冻结明细与迟到查询说明） |
+| POST | `/api/query_history/period-stats/reports/{id}/dispatch` | 按慢查询编号派单 |
+| GET | `/api/query_history/period-stats/coverage/{query_log_id}` | 某条查询被哪些报告收录 |
+| POST | `/api/query_history/logs` | 补登查询日志（迟到登记） |
+
 领域：数据工程
 子方向：数据分析与数据应用

@@ -1092,6 +1092,75 @@ def check_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
 # 数据初始化：生成真实种子数据
 # ============================================================================
 
+def seed_query_scenario() -> int:
+    """写入查询历史时段场景：跨界慢查询、时段内快查询、更早的历史慢查询。
+
+    以最近一个 09:00 锚点作为当班时段起点，保证“时段从 09:00 起”的开箱可用。
+    """
+    anchor = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
+    if anchor > datetime.now():
+        anchor -= timedelta(days=1)
+    period_start = anchor
+    crossing_start = period_start - timedelta(minutes=2)
+    crossing_end = period_start + timedelta(minutes=2)
+    short_at = period_start + timedelta(minutes=5)
+    early_at = datetime.combine(period_start.date(), datetime.min.time()).replace(hour=7)
+
+    rows = [
+        {
+            "executor": "值班长",
+            "dataset": "events",
+            "query_summary": "跨时段起点：订单转化漏斗重算",
+            "row_count": 128,
+            "execution_time_ms": 600,
+            "status": "慢查询",
+            "executed_at": crossing_end.strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": crossing_start.strftime("%Y-%m-%dT%H:%M:%S"),
+            "ended_at": crossing_end.strftime("%Y-%m-%dT%H:%M:%S"),
+            "registered_at": crossing_end.strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+        {
+            "executor": "分析员",
+            "dataset": "events",
+            "query_summary": "时段起点后完整执行：渠道日活明细",
+            "row_count": 42,
+            "execution_time_ms": 100,
+            "status": "正常",
+            "executed_at": short_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": short_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "ended_at": short_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "registered_at": short_at.strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+        {
+            "executor": "分析员",
+            "dataset": "metric_values",
+            "query_summary": "更早的历史慢查询：留存明细全表扫描",
+            "row_count": 960,
+            "execution_time_ms": 1000,
+            "status": "慢查询",
+            "executed_at": early_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": early_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "ended_at": early_at.strftime("%Y-%m-%dT%H:%M:%S"),
+            "registered_at": early_at.strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+        {
+            "executor": "分析员",
+            "dataset": "events",
+            "query_summary": "老查询无开始时间：按执行时间归属",
+            "row_count": 310,
+            "execution_time_ms": 720,
+            "status": "慢查询",
+            "executed_at": (period_start + timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%S"),
+            "started_at": None,
+            "ended_at": None,
+            "registered_at": (period_start + timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+    ]
+    for row in rows:
+        db.insert("query_log", row)
+    return len(rows)
+
+
 def seed_real_data() -> dict[str, int]:
     """生成全量真实种子数据：事件、聚合窗口、指标、分群、漏斗、Cube等。
 
@@ -1270,5 +1339,9 @@ def seed_real_data() -> dict[str, int]:
             "status": "已生效",
         })
     counts["alerts"] = len(alerts)
+
+    # 查询历史时段场景（跨界慢查询 / 时段内快查询 / 更早历史慢查询）
+    if db.count("query_log") == 0:
+        counts["query_log"] = seed_query_scenario()
 
     return counts
